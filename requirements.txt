@@ -1,0 +1,7 @@
+streamlit
+pandas
+matplotlib
+networkx
+wordcloud
+rouge_score
+sacrebleu
