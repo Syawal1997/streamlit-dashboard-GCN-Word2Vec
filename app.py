@@ -15,6 +15,17 @@ from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFacto
 from torch_geometric.nn import GCNConv
 import torch.optim as optim
 
+# Pastikan punkt terunduh sebelum digunakan
+import nltk
+nltk.download('punkt')
+
+# Tokenization
+def tokenized_text(text):
+    tokenized_text = nltk.word_tokenize(text)
+    tokenized_text = [word for word in tokenized_text if len(word) > 1]
+    return tokenized_text
+
+
 # Initialize Streamlit app
 st.title("GCN Model for Text Review Analysis")
 
