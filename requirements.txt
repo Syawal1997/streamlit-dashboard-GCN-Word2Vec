@@ -6,3 +6,5 @@ gensim
 scikit-learn
 Sastrawi
 matplotlib
+gensim==4.0.0
+scipy==1.7.3
