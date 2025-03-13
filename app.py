@@ -13,6 +13,11 @@ from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFacto
 import re
 import string
 import matplotlib.pyplot as plt
+import gensim
+import scipy
+
+print(gensim.__version__)
+print(scipy.__version__)
 
 # Function to clean and preprocess the review text
 def preprocess_text(text):
