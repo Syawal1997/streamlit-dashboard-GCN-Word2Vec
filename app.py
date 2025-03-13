@@ -15,22 +15,6 @@ from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFacto
 from torch_geometric.nn import GCNConv
 import torch.optim as optim
 
-import torch_geometric
-from torch_geometric.nn import GCNConv
-print("torch_geometric berhasil diimpor!")
-
-
-# Pastikan punkt terunduh sebelum digunakan
-import nltk
-nltk.download('punkt')
-
-# Tokenization
-def tokenized_text(text):
-    tokenized_text = nltk.word_tokenize(text)
-    tokenized_text = [word for word in tokenized_text if len(word) > 1]
-    return tokenized_text
-
-
 # Initialize Streamlit app
 st.title("GCN Model for Text Review Analysis")
 
@@ -105,13 +89,13 @@ def AdjustFeatures(f, a):
 
 # Define a simple GCN model
 class GCN(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(GCN, self).__init__()
+    def _init_(self, in_channels, out_channels):
+        super(GCN, self)._init_()
         self.conv1 = GCNConv(in_channels, out_channels)
         self.conv2 = GCNConv(out_channels, out_channels)
 
     def forward(self, x, edge_index):
-        x = torch.relu(self.conv1(x, edge_index))
+        x = F.relu(self.conv1(x, edge_index))
         x = self.conv2(x, edge_index)
         return x
 
@@ -122,14 +106,8 @@ review_text = st.text_area("Enter your review:")
 if st.button('Submit Review'):
 
     if review_text:
-        st.subheader("Original Review:")
-        st.write(review_text)
-        
         # Preprocess the review
         tokenized_review = preprocess_review(review_text)
-        
-        st.subheader("Preprocessed Review:")
-        st.write(" ".join(tokenized_review))
         
         # Create graph using Word2Vec
         adj_matrix, features, graph = GraphWord2Vec(tokenized_review)
@@ -138,7 +116,6 @@ if st.button('Submit Review'):
         features, adj_matrix, device = AdjustFeatures(features, adj_matrix)
 
         # Create the graph and plot
-        plt.figure(figsize=(8, 6))
         nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
         st.pyplot(plt)
 
@@ -151,7 +128,7 @@ if st.button('Submit Review'):
         # Perform forward pass through GCN
         output = model(features, edge_index)
 
-        st.subheader("Output after GCN processing:")
-        st.write(output)
+        st.write("Output after GCN processing:", output)
+
     else:
         st.warning("Please enter a review.")
