@@ -13,3 +13,5 @@ torch_sparse
 torch_scatter
 torch_cluster
 torch_spline_conv
+torch==2.0.1
+
