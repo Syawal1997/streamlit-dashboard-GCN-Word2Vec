@@ -1,56 +1,53 @@
 import streamlit as st
-import numpy as np
 import torch
 import torch.nn as nn
 import networkx as nx
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
+import re
 from collections import defaultdict
 from gensim.models import Word2Vec
-import re
 import string
-import nltk
+from nltk.tokenize import word_tokenize
+import numpy as np
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
-from torch_geometric.nn import GCNConv
-import torch.optim as optim
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Initialize Streamlit app
-st.title("GCN Model for Text Review Analysis")
-
-# Function to preprocess text
+# Function to preprocess text (you can adjust this based on your needs)
 def preprocess_text(text):
     text = text.lower()
-    text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove non-ASCII characters
     return text
 
-# Function to remove punctuation
-def remove_punctuation(text):
-    translator = str.maketrans('', '', string.punctuation)
-    return text.translate(translator)
+# Remove duplicate characters
+def remove_duplicate_chars(text):
+    special_words = ['good']
+    for i, word in enumerate(special_words):
+        text = text.replace(word, f"_{i}_")
+    no_double_text = re.sub(r'(.)\1+', r'\1', text)
+    for i, word in enumerate(special_words):
+        no_double_text = no_double_text.replace(f"_{i}_", word)
+    return no_double_text
 
-# Function to remove stopwords
+# Tokenization and stopword removal
 def stopword_removal(text):
     factory = StopWordRemoverFactory()
     stopword = factory.create_stop_word_remover()
     text_clean = stopword.remove(text)
     return text_clean
 
-# Tokenization
+def remove_punctuation(text):
+    translator = str.maketrans('', '', string.punctuation)
+    return text.translate(translator)
+
 def tokenized_text(text):
-    tokenized_text = nltk.word_tokenize(text)
+    tokenized_text = word_tokenize(text)
     tokenized_text = [word for word in tokenized_text if len(word) > 1]
     return tokenized_text
 
-# Preprocessing pipeline
-def preprocess_review(text):
-    text = preprocess_text(text)
-    text = remove_punctuation(text)
-    text = stopword_removal(text)
-    return tokenized_text(text)
-
-# Graph creation based on Word2Vec model
+# Graph Creation for Word2Vec and GCN model
 def GraphWord2Vec(text):
+    # Train Word2Vec model
     w2v_model = Word2Vec([text], vector_size=64, window=2, min_count=1, sg=0)
     word_vectors = w2v_model.wv
 
@@ -65,7 +62,7 @@ def GraphWord2Vec(text):
         for word_j in word_idx:
             if word_i != word_j:
                 adj_matrix[word_idx[word_i], word_idx[word_j]] = word_vectors.similarity(word_i, word_j)
-
+    
     graph = nx.Graph(adj_matrix)
     labels = {v: k for k, v in word_idx.items()}
     graph = nx.relabel_nodes(graph, labels)
@@ -74,7 +71,6 @@ def GraphWord2Vec(text):
 
     return adj_matrix, features, graph
 
-# Adjust features to match the number of nodes in adjacency matrix
 def AdjustFeatures(f, a):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     a = a.astype(np.float32)
@@ -87,48 +83,75 @@ def AdjustFeatures(f, a):
 
     return f, a, device
 
-# Define a simple GCN model
-class GCN(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(GCN, self).__init__()
-        self.conv1 = GCNConv(in_channels, out_channels)
-        self.conv2 = GCNConv(out_channels, out_channels)
+# Streamlit Application
+st.title("GCN Review Analyzer")
 
-    def forward(self, x, edge_index):
-        x = F.relu(self.conv1(x, edge_index))
-        x = self.conv2(x, edge_index)
-        return x
+# Text input for review
+user_review = st.text_area("Enter your review", "Type your review here...")
 
-# Streamlit UI to enter a review
-review_text = st.text_area("Enter your review:")
+# Preprocess the review
+if user_review:
+    # Process the input review
+    processed_review = preprocess_text(user_review)
+    processed_review = remove_duplicate_chars(processed_review)
+    processed_review = stopword_removal(processed_review)
+    processed_review = remove_punctuation(processed_review)
+    tokenized_review = tokenized_text(processed_review)
+    
+    # Display the original review
+    st.subheader("Original Review")
+    st.write(user_review)
 
-# Button to submit the review
-if st.button('Submit Review'):
+    # Display the processed review
+    st.subheader("Processed Review")
+    st.write(processed_review)
 
-    if review_text:
-        # Preprocess the review
-        tokenized_review = preprocess_review(review_text)
-        
-        # Create graph using Word2Vec
-        adj_matrix, features, graph = GraphWord2Vec(tokenized_review)
-        
-        # Adjust the features and adjacency matrix
-        features, adj_matrix, device = AdjustFeatures(features, adj_matrix)
+    # Display Tokenized Text
+    st.subheader("Tokenized Review")
+    st.write(tokenized_review)
 
-        # Create the graph and plot
-        nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
-        st.pyplot(plt)
+    # Graph Generation with Word2Vec
+    adj_matrix, features, graph = GraphWord2Vec(tokenized_review)
 
-        # Define GCN model (for demo, we're using a simple one with 2 layers)
-        model = GCN(in_channels=features.shape[1], out_channels=64).to(device)
+    # Adjust features and adjacency matrix for the model
+    f, a, device = AdjustFeatures(features, adj_matrix)
 
-        # Placeholder edge_index (you can compute this based on the graph)
-        edge_index = torch.tensor(np.array(np.nonzero(adj_matrix)), dtype=torch.long).to(device)
+    # Plot the Word2Vec Graph using NetworkX
+    plt.figure(figsize=(10, 8))
+    nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown', node_size=500, node_color="skyblue")
+    st.subheader("Word2Vec Graph Visualization")
+    st.pyplot()
 
-        # Perform forward pass through GCN
-        output = model(features, edge_index)
+    # TF-IDF Vectorizer and Graph Plotting
+    tfidf = TfidfVectorizer()
+    tfidf_matrix = tfidf.fit_transform([processed_review])
+    feature_names = tfidf.get_feature_names_out()
 
-        st.write("Output after GCN processing:", output)
+    dense_matrix = tfidf_matrix.toarray()
+    tfidf_df = pd.DataFrame(dense_matrix, columns=feature_names)
 
-    else:
-        st.warning("Please enter a review.")
+    # Plotting TF-IDF scores
+    document_index = 0
+    tfidf_scores = tfidf_df.iloc[document_index]
+    sorted_tfidf_scores = tfidf_scores.sort_values(ascending=False)
+    top_n = 10
+    top_tfidf_scores = sorted_tfidf_scores[:top_n]
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(top_tfidf_scores.index, top_tfidf_scores.values)
+    plt.xlabel("Words")
+    plt.ylabel("TF-IDF Score")
+    plt.title(f"Top {top_n} Words with Highest TF-IDF Scores")
+    plt.xticks(rotation=45, ha='right')
+    st.subheader("TF-IDF Score Visualization")
+    st.pyplot()
+
+# Add instructions or information to the Streamlit app
+st.write(
+    """
+    **How it works**: 
+    - Enter a review in the input box.
+    - The app will preprocess the review by removing stopwords, punctuation, and tokenizing it.
+    - It will then display the processed review, tokenized words, and visualize the Word2Vec graph and TF-IDF scores.
+    """
+)
