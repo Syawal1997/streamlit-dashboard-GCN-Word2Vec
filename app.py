@@ -1,42 +1,56 @@
 import streamlit as st
-import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import networkx as nx
-import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import defaultdict
 from gensim.models import Word2Vec
-from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
 import re
 import string
-import matplotlib.pyplot as plt
-import gensim
-import scipy
+import nltk
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
+from torch_geometric.nn import GCNConv
+import torch.optim as optim
+import torch.nn.functional as F  # Add this import for the ReLU activation
 
-print(gensim.__version__)
-print(scipy.__version__)
+# Initialize Streamlit app
+st.title("GCN Model for Text Review Analysis")
 
-# Function to clean and preprocess the review text
+# Function to preprocess text
 def preprocess_text(text):
-    # Remove punctuation
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    
-    # Remove stopwords
+    text = text.lower()
+    text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove non-ASCII characters
+    return text
+
+# Function to remove punctuation
+def remove_punctuation(text):
+    translator = str.maketrans('', '', string.punctuation)
+    return text.translate(translator)
+
+# Function to remove stopwords
+def stopword_removal(text):
     factory = StopWordRemoverFactory()
     stopword = factory.create_stop_word_remover()
     text_clean = stopword.remove(text)
-    
-    # Apply stemming
-    factory = StemmerFactory()
-    stemmer = factory.create_stemmer()
-    text = stemmer.stem(text_clean)
-    
-    return text
+    return text_clean
 
-# Function to generate Graph using Word2Vec
+# Tokenization
+def tokenized_text(text):
+    tokenized_text = nltk.word_tokenize(text)
+    tokenized_text = [word for word in tokenized_text if len(word) > 1]
+    return tokenized_text
+
+# Preprocessing pipeline
+def preprocess_review(text):
+    text = preprocess_text(text)
+    text = remove_punctuation(text)
+    text = stopword_removal(text)
+    return tokenized_text(text)
+
+# Graph creation based on Word2Vec model
 def GraphWord2Vec(text):
     w2v_model = Word2Vec([text], vector_size=64, window=2, min_count=1, sg=0)
     word_vectors = w2v_model.wv
@@ -52,46 +66,70 @@ def GraphWord2Vec(text):
         for word_j in word_idx:
             if word_i != word_j:
                 adj_matrix[word_idx[word_i], word_idx[word_j]] = word_vectors.similarity(word_i, word_j)
-                
+
     graph = nx.Graph(adj_matrix)
     labels = {v: k for k, v in word_idx.items()}
     graph = nx.relabel_nodes(graph, labels)
-    
+
     features = np.array([word_vectors[word] for word in text])
 
     return adj_matrix, features, graph
 
-# Streamlit UI
-st.title("Review Processing with GCN")
+# Adjust features to match the number of nodes in adjacency matrix
+def AdjustFeatures(f, a):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    a = a.astype(np.float32)
+    f = torch.FloatTensor(f).to(device)
 
-# Input from user
-review_input = st.text_area("Masukkan Review Anda:", height=200)
+    if f.shape[0] > a.shape[0]:
+        f = f[:a.shape[0], :]
+    elif f.shape[0] < a.shape[0]:
+        a = a[:f.shape[0], :f.shape[0]]
 
-if st.button("Proses Review"):
-    if review_input:
-        # Preprocess review text
-        processed_review = preprocess_text(review_input)
-        tokenized_review = processed_review.split()
+    return f, a, device
 
-        # Create Graph with Word2Vec
+# Define a simple GCN model
+class GCN(nn.Module):
+    def __init__(self, in_channels, out_channels):  # Fix __init__ constructor
+        super(GCN, self).__init__()
+        self.conv1 = GCNConv(in_channels, out_channels)
+        self.conv2 = GCNConv(out_channels, out_channels)
+
+    def forward(self, x, edge_index):
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.conv2(x, edge_index)
+        return x
+
+# Streamlit UI to enter a review
+review_text = st.text_area("Enter your review:")
+
+# Button to submit the review
+if st.button('Submit Review'):
+
+    if review_text:
+        # Preprocess the review
+        tokenized_review = preprocess_review(review_text)
+        
+        # Create graph using Word2Vec
         adj_matrix, features, graph = GraphWord2Vec(tokenized_review)
+        
+        # Adjust the features and adjacency matrix
+        features, adj_matrix, device = AdjustFeatures(features, adj_matrix)
 
-        # Adjust Features and Adjacency Matrix to match GCN model
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        features_tensor = torch.FloatTensor(features).to(device)
-        adj_matrix_tensor = torch.FloatTensor(adj_matrix).to(device)
-
-        # Display Graph Visualization
+        # Create the graph and plot
         nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
-        st.pyplot(plt.gcf())
+        st.pyplot(plt)
 
-        # Display adjacency matrix (optional)
-        st.write("Adjacency Matrix:")
-        st.write(adj_matrix)
+        # Define GCN model (for demo, we're using a simple one with 2 layers)
+        model = GCN(in_channels=features.shape[1], out_channels=64).to(device)
 
-        # Example output (dummy result, replace with your GCN model's output)
-        st.subheader("Hasil Ringkasan dengan Model GCN:")
-        # For example, we can just output a dummy text for now
-        st.write("Ringkasan: Review Anda telah diproses melalui GCN!")
+        # Placeholder edge_index (you can compute this based on the graph)
+        edge_index = torch.tensor(np.array(np.nonzero(adj_matrix)), dtype=torch.long).to(device)
+
+        # Perform forward pass through GCN
+        output = model(features, edge_index)
+
+        st.write("Output after GCN processing:", output)
+
     else:
-        st.warning("Masukkan review terlebih dahulu.")
+        st.warning("Please enter a review.")
