@@ -1,7 +1,8 @@
 streamlit
-pandas
-matplotlib
+torch
 networkx
-wordcloud
-rouge_score
-sacrebleu
+matplotlib
+gensim
+Sastrawi
+nltk
+scikit-learn
