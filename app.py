@@ -1,116 +1,134 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
-import re
-import string
 import torch
 import torch.nn as nn
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from gensim.models import Word2Vec
 import networkx as nx
 import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
+from collections import defaultdict
+from gensim.models import Word2Vec
+import re
+import string
+import nltk
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
-from nltk.tokenize import word_tokenize
-from collections import defaultdict
-import requests
+from torch_geometric.nn import GCNConv
+import torch.optim as optim
 
-# Load datasets from GitHub URL
-BASE_PATH = "https://raw.githubusercontent.com/Syawal1997/streamlit-dashboard-GCN-Word2Vec/main/"
-DATASET_PATH = "20191002-reviews.xlsx"
-HR_PATH = "human_review.xlsx"
+# Initialize Streamlit app
+st.title("GCN Model for Text Review Analysis")
 
-def load_data():
-    review_df = pd.read_excel(BASE_PATH + DATASET_PATH)
-    human_review_df = pd.read_excel(BASE_PATH + HR_PATH)
-    return review_df, human_review_df
-
+# Function to preprocess text
 def preprocess_text(text):
     text = text.lower()
-    # Remove punctuation
-    text = ''.join([char for char in text if char not in string.punctuation])
+    text = re.sub(r'[^\x00-\x7F]+', '', text)  # Remove non-ASCII characters
     return text
 
+# Function to remove punctuation
+def remove_punctuation(text):
+    translator = str.maketrans('', '', string.punctuation)
+    return text.translate(translator)
+
+# Function to remove stopwords
 def stopword_removal(text):
     factory = StopWordRemoverFactory()
     stopword = factory.create_stop_word_remover()
-    return stopword.remove(text)
+    text_clean = stopword.remove(text)
+    return text_clean
 
+# Tokenization
 def tokenized_text(text):
-    return [word for word in word_tokenize(text) if len(word) > 1]
+    tokenized_text = nltk.word_tokenize(text)
+    tokenized_text = [word for word in tokenized_text if len(word) > 1]
+    return tokenized_text
 
-def generate_tfidf_summary(reviews):
-    tfidf_vectorizer = TfidfVectorizer(max_features=10)
-    tfidf_matrix = tfidf_vectorizer.fit_transform(reviews)
-    feature_names = np.array(tfidf_vectorizer.get_feature_names_out())
-    dense = tfidf_matrix.todense()
-    tfidf_scores = dense.tolist()
-    return list(zip(feature_names, tfidf_scores[0]))
+# Preprocessing pipeline
+def preprocess_review(text):
+    text = preprocess_text(text)
+    text = remove_punctuation(text)
+    text = stopword_removal(text)
+    return tokenized_text(text)
 
-def generate_word2vec_summary(reviews):
-    sentences = [review.split() for review in reviews]
-    model = Word2Vec(sentences, min_count=1, vector_size=100, workers=4)
-    most_common_words = sorted(model.wv.key_to_index, key=lambda x: model.wv.get_vecattr(x, "count"), reverse=True)
-    return most_common_words[:10]
+# Graph creation based on Word2Vec model
+def GraphWord2Vec(text):
+    w2v_model = Word2Vec([text], vector_size=64, window=2, min_count=1, sg=0)
+    word_vectors = w2v_model.wv
 
-def generate_gcn_summary(reviews):
-    G = nx.Graph()
-    for review in reviews:
-        words = review.split()
-        for i in range(len(words)):
-            for j in range(i + 1, len(words)):
-                if not G.has_edge(words[i], words[j]):
-                    G.add_edge(words[i], words[j])
-    degree_dict = dict(G.degree())
-    sorted_degree = sorted(degree_dict.items(), key=lambda x: x[1], reverse=True)
-    return [item[0] for item in sorted_degree[:10]]
+    words_freq = defaultdict(int)
+    for word in text:
+        words_freq[word] += 1
+    n_words = len(words_freq)
+    word_idx = dict(zip(words_freq.keys(), range(n_words)))
 
-def main():
-    st.title("Review Summary Generator")
-    
-    # Upload file
-    st.sidebar.title("Upload Your Data")
-    uploaded_file = st.sidebar.file_uploader("Choose a file", type=["xlsx", "csv"])
-    
-    # Select Model
-    model = st.selectbox("Select Summary Model", ["TF-IDF", "Word2Vec", "GCN"])
+    adj_matrix = np.zeros((n_words, n_words))
+    for word_i in word_idx:
+        for word_j in word_idx:
+            if word_i != word_j:
+                adj_matrix[word_idx[word_i], word_idx[word_j]] = word_vectors.similarity(word_i, word_j)
 
-    # Input Review
-    review_input = st.text_area("Masukkan Review", "Tulis review Anda di sini...")
-    submit_button = st.button("Generate Summary")
+    graph = nx.Graph(adj_matrix)
+    labels = {v: k for k, v in word_idx.items()}
+    graph = nx.relabel_nodes(graph, labels)
 
-    if submit_button:
-        if uploaded_file is not None:
-            if uploaded_file.name.endswith('xlsx'):
-                data = pd.read_excel(uploaded_file)
-            else:
-                data = pd.read_csv(uploaded_file)
-            
-            st.write(f"Loaded {uploaded_file.name} with {len(data)} records.")
+    features = np.array([word_vectors[word] for word in text])
+
+    return adj_matrix, features, graph
+
+# Adjust features to match the number of nodes in adjacency matrix
+def AdjustFeatures(f, a):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    a = a.astype(np.float32)
+    f = torch.FloatTensor(f).to(device)
+
+    if f.shape[0] > a.shape[0]:
+        f = f[:a.shape[0], :]
+    elif f.shape[0] < a.shape[0]:
+        a = a[:f.shape[0], :f.shape[0]]
+
+    return f, a, device
+
+# Define a simple GCN model
+class GCN(nn.Module):
+    def _init_(self, in_channels, out_channels):
+        super(GCN, self)._init_()
+        self.conv1 = GCNConv(in_channels, out_channels)
+        self.conv2 = GCNConv(out_channels, out_channels)
+
+    def forward(self, x, edge_index):
+        x = F.relu(self.conv1(x, edge_index))
+        x = self.conv2(x, edge_index)
+        return x
+
+# Streamlit UI to enter a review
+review_text = st.text_area("Enter your review:")
+
+# Button to submit the review
+if st.button('Submit Review'):
+
+    if review_text:
+        # Preprocess the review
+        tokenized_review = preprocess_review(review_text)
         
-        # Preprocess input
-        review_input_clean = preprocess_text(review_input)
-        review_input_clean = stopword_removal(review_input_clean)
-        review_tokenized = tokenized_text(review_input_clean)
+        # Create graph using Word2Vec
+        adj_matrix, features, graph = GraphWord2Vec(tokenized_review)
         
-        reviews = [" ".join(review_tokenized)]  # Wrap single review in list for processing
+        # Adjust the features and adjacency matrix
+        features, adj_matrix, device = AdjustFeatures(features, adj_matrix)
 
-        if model == "TF-IDF":
-            summary = generate_tfidf_summary(reviews)
-            st.subheader("TF-IDF Summary:")
-            for word, score in summary:
-                st.write(f"{word}: {score}")
+        # Create the graph and plot
+        nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
+        st.pyplot(plt)
 
-        elif model == "Word2Vec":
-            summary = generate_word2vec_summary(reviews)
-            st.subheader("Word2Vec Summary:")
-            st.write(", ".join(summary))
+        # Define GCN model (for demo, we're using a simple one with 2 layers)
+        model = GCN(in_channels=features.shape[1], out_channels=64).to(device)
 
-        elif model == "GCN":
-            summary = generate_gcn_summary(reviews)
-            st.subheader("GCN Summary:")
-            st.write(", ".join(summary))
+        # Placeholder edge_index (you can compute this based on the graph)
+        edge_index = torch.tensor(np.array(np.nonzero(adj_matrix)), dtype=torch.long).to(device)
 
-if __name__ == "__main__":
-    main()
+        # Perform forward pass through GCN
+        output = model(features, edge_index)
+
+        st.write("Output after GCN processing:", output)
+
+    else:
+        st.warning("Please enter a review.")
