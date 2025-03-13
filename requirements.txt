@@ -6,3 +6,4 @@ gensim
 Sastrawi
 nltk
 scikit-learn
+scipy
