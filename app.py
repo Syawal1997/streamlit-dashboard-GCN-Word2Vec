@@ -15,6 +15,11 @@ from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFacto
 from torch_geometric.nn import GCNConv
 import torch.optim as optim
 
+import torch_geometric
+from torch_geometric.nn import GCNConv
+print("torch_geometric berhasil diimpor!")
+
+
 # Pastikan punkt terunduh sebelum digunakan
 import nltk
 nltk.download('punkt')
