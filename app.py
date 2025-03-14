@@ -16,6 +16,10 @@ from torch_geometric.nn import GCNConv
 import torch.optim as optim
 import torch.nn.functional as F  # Add this import for the ReLU activation
 
+
+# Download the punkt tokenizer models
+nltk.download('punkt')
+
 # Initialize Streamlit app
 st.title("GCN Model for Text Review Analysis")
 
