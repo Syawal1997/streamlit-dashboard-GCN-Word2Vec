@@ -1,11 +1,11 @@
 # Pastikan menggunakan versi terbaru yang kompatibel dengan Python 3.12
-gensim==4.2.0
-scipy==1.9.3
-torch==2.0.1
-torch-geometric==2.2.0
-sastrawi==1.0.0
-scikit-learn==1.2.2
-nltk==3.8.1
-wordcloud==1.9.2
-matplotlib==3.7.1
-numpy==1.24.2
+gensim
+scipy
+torch
+torch-geometric
+sastrawi
+scikit-learn
+nltk
+wordcloud
+matplotlib
+numpy
