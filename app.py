@@ -18,6 +18,10 @@ from torch_geometric.nn import GCNConv
 import torch.optim as optim
 import torch.nn.functional as F
 
+# Download necessary NLTK data files
+nltk.download('stopwords')
+nltk.download('punkt')
+
 # Streamlit Title
 st.title("GCN Model with Text Summarization")
 
@@ -28,7 +32,6 @@ def preprocess_text(text):
     return text
 
 # Load stopwords from NLTK
-nltk.download('stopwords')
 stop_words = set(stopwords.words('indonesian'))
 
 def stopword_removal(text):
@@ -50,7 +53,12 @@ def preprocess_review(text):
 
 # Text Summarization Function using TextRank
 def summarize_text(text, num_sentences=3):
-    sentences = sent_tokenize(text)
+    try:
+        sentences = sent_tokenize(text)
+    except LookupError:
+        st.warning("Tokenizer Punkt tidak ditemukan, menggunakan metode alternatif.")
+        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+    
     if len(sentences) <= num_sentences:
         return text  # Return original text if too short
     
