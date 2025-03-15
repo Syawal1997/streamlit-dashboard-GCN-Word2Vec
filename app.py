@@ -17,13 +17,17 @@ from sklearn.metrics.pairwise import cosine_similarity
 from torch_geometric.nn import GCNConv
 import torch.optim as optim
 import torch.nn.functional as F
+from sentence_transformers import SentenceTransformer
 
 # Download necessary NLTK data files
 nltk.download('stopwords')
 nltk.download('punkt')
 
+# Load pre-trained models
+sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+
 # Streamlit Title
-st.title("GCN Model with Text Summarization")
+st.title("GCN Model with Text Summarization and Analysis")
 
 # Function to preprocess text
 def preprocess_text(text):
@@ -74,6 +78,26 @@ def summarize_text(text, num_sentences=3):
     summary = ' '.join([s[1] for s in ranked_sentences[:num_sentences]])
     return summary
 
+# TF-IDF Analysis
+def tfidf_analysis(text):
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform([text])
+    feature_names = vectorizer.get_feature_names_out()
+    scores = tfidf_matrix.toarray()[0]
+    return {feature_names[i]: scores[i] for i in range(len(feature_names))}
+
+# Word2Vec Analysis
+def word2vec_analysis(text):
+    words = tokenized_text(text)
+    w2v_model = Word2Vec([words], vector_size=64, window=2, min_count=1, sg=0)
+    word_vectors = {word: w2v_model.wv[word].tolist() for word in words if word in w2v_model.wv}
+    return word_vectors
+
+# Sentence Embeddings using SentenceTransformer (like GloVe or LLMs)
+def sentence_embedding(text):
+    embedding = sentence_model.encode(text)
+    return embedding.tolist()
+
 # Streamlit UI
 txt_input = st.text_area("Enter your text for summarization and analysis:")
 
@@ -83,5 +107,20 @@ if st.button('Process Text'):
         summary = summarize_text(txt_input)
         st.subheader("Summarized Text:")
         st.write(summary)
+        
+        # TF-IDF Analysis
+        tfidf_result = tfidf_analysis(summary)
+        st.subheader("TF-IDF Analysis:")
+        st.write(tfidf_result)
+        
+        # Word2Vec Analysis
+        word2vec_result = word2vec_analysis(summary)
+        st.subheader("Word2Vec Analysis:")
+        st.write(word2vec_result)
+        
+        # Sentence Embeddings
+        embedding_result = sentence_embedding(summary)
+        st.subheader("Sentence Embedding (LLM/GloVe-based):")
+        st.write(embedding_result)
     else:
         st.warning("Please enter some text.")
