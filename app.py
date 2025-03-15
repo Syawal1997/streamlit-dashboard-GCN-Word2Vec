@@ -4,25 +4,19 @@ import torch
 import torch.nn as nn
 import networkx as nx
 import matplotlib.pyplot as plt
-from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import defaultdict
 from gensim.models import Word2Vec
 import re
 import string
 import nltk
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
+from nltk.tokenize import RegexpTokenizer
+from nltk.corpus import stopwords
 from torch_geometric.nn import GCNConv
 import torch.optim as optim
 import torch.nn.functional as F
 
-# Download necessary NLTK resources
-nltk.download('punkt')
-nltk.download('stopwords')
-
-from nltk.corpus import stopwords
-
-# Initialize Streamlit app
+# Streamlit Title
 st.title("GCN Model for Text Review Analysis")
 
 # Function to preprocess text
@@ -37,6 +31,7 @@ def remove_punctuation(text):
     return text.translate(translator)
 
 # Load stopwords from NLTK
+nltk.download('stopwords')
 stop_words = set(stopwords.words('indonesian'))
 
 # Function to remove stopwords
@@ -45,9 +40,11 @@ def stopword_removal(text):
     words_filtered = [word for word in words if word not in stop_words]
     return ' '.join(words_filtered)
 
-# Tokenization
+# Ganti word_tokenize dengan RegexpTokenizer untuk menghindari punkt error
+tokenizer = RegexpTokenizer(r'\w+')
+
 def tokenized_text(text):
-    return nltk.word_tokenize(text)
+    return tokenizer.tokenize(text)
 
 # Preprocessing pipeline
 def preprocess_review(text):
@@ -127,10 +124,10 @@ if st.button('Submit Review'):
         nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
         st.pyplot(plt)
 
-        # Define GCN model (for demo, we're using a simple one with 2 layers)
+        # Define GCN model
         model = GCN(in_channels=features.shape[1], out_channels=64).to(device)
 
-        # Placeholder edge_index (you can compute this based on the graph)
+        # Placeholder edge_index
         edge_index = torch.tensor(np.array(np.nonzero(adj_matrix)), dtype=torch.long).to(device)
 
         # Perform forward pass through GCN
