@@ -84,14 +84,14 @@ def tfidf_analysis(text):
     tfidf_matrix = vectorizer.fit_transform([text])
     feature_names = vectorizer.get_feature_names_out()
     scores = tfidf_matrix.toarray()[0]
-    return {feature_names[i]: scores[i] for i in range(len(feature_names))}
+    return ' '.join(sorted(feature_names, key=lambda x: scores[vectorizer.vocabulary_[x]], reverse=True)[:5])
 
 # Word2Vec Analysis
 def word2vec_analysis(text):
     words = tokenized_text(text)
     w2v_model = Word2Vec([words], vector_size=64, window=2, min_count=1, sg=0)
     word_vectors = {word: w2v_model.wv[word].tolist() for word in words if word in w2v_model.wv}
-    return word_vectors
+    return ' '.join(list(word_vectors.keys())[:5])
 
 # Sentence Embeddings using SentenceTransformer (like GloVe or LLMs)
 def sentence_embedding(text):
@@ -105,22 +105,22 @@ if st.button('Process Text'):
     if txt_input:
         # Summarization
         summary = summarize_text(txt_input)
-        st.subheader("Summarized Text:")
+        st.subheader("Summarized Text (TextRank):")
         st.write(summary)
         
         # TF-IDF Analysis
         tfidf_result = tfidf_analysis(summary)
-        st.subheader("TF-IDF Analysis:")
+        st.subheader("TF-IDF Based Summary:")
         st.write(tfidf_result)
         
         # Word2Vec Analysis
         word2vec_result = word2vec_analysis(summary)
-        st.subheader("Word2Vec Analysis:")
+        st.subheader("Word2Vec Based Summary:")
         st.write(word2vec_result)
         
         # Sentence Embeddings
         embedding_result = sentence_embedding(summary)
-        st.subheader("Sentence Embedding (LLM/GloVe-based):")
-        st.write(embedding_result)
+        st.subheader("Sentence Embedding (LLM/GloVe-based) Summary:")
+        st.write(embedding_result[:5])
     else:
         st.warning("Please enter some text.")
