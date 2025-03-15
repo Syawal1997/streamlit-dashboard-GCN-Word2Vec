@@ -14,11 +14,13 @@ from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
 from torch_geometric.nn import GCNConv
 import torch.optim as optim
-import torch.nn.functional as F  # Add this import for the ReLU activation
+import torch.nn.functional as F
 
-
-# Download the punkt tokenizer models
+# Download necessary NLTK resources
 nltk.download('punkt')
+nltk.download('stopwords')
+
+from nltk.corpus import stopwords
 
 # Initialize Streamlit app
 st.title("GCN Model for Text Review Analysis")
@@ -34,18 +36,18 @@ def remove_punctuation(text):
     translator = str.maketrans('', '', string.punctuation)
     return text.translate(translator)
 
+# Load stopwords from NLTK
+stop_words = set(stopwords.words('indonesian'))
+
 # Function to remove stopwords
 def stopword_removal(text):
-    factory = StopWordRemoverFactory()
-    stopword = factory.create_stop_word_remover()
-    text_clean = stopword.remove(text)
-    return text_clean
+    words = text.split()
+    words_filtered = [word for word in words if word not in stop_words]
+    return ' '.join(words_filtered)
 
 # Tokenization
 def tokenized_text(text):
-    tokenized_text = nltk.word_tokenize(text)
-    tokenized_text = [word for word in tokenized_text if len(word) > 1]
-    return tokenized_text
+    return nltk.word_tokenize(text)
 
 # Preprocessing pipeline
 def preprocess_review(text):
@@ -94,7 +96,7 @@ def AdjustFeatures(f, a):
 
 # Define a simple GCN model
 class GCN(nn.Module):
-    def __init__(self, in_channels, out_channels):  # Fix __init__ constructor
+    def __init__(self, in_channels, out_channels):  
         super(GCN, self).__init__()
         self.conv1 = GCNConv(in_channels, out_channels)
         self.conv2 = GCNConv(out_channels, out_channels)
@@ -121,6 +123,7 @@ if st.button('Submit Review'):
         features, adj_matrix, device = AdjustFeatures(features, adj_matrix)
 
         # Create the graph and plot
+        plt.figure(figsize=(8, 6))
         nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
         st.pyplot(plt)
 
