@@ -13,6 +13,21 @@ from gensim.models import Word2Vec
 from collections import defaultdict
 import streamlit as st
 
+import nltk
+nltk.download('punkt')  # Pastikan ini diunduh untuk pertama kalinya
+
+# Fungsi untuk memproses review yang dimasukkan
+def process_reviews(input_review):
+    # Proses review pengguna
+    review_df = pd.DataFrame({'review': [input_review]})
+    review_df['review'] = review_df['review'].apply(preprocess_text)
+    
+    # Tokenisasi
+    from nltk.tokenize import word_tokenize
+    review_df["tokenized"] = review_df["review"].apply(lambda x: [word for word in word_tokenize(x) if len(word) > 1])
+
+    return review_df
+
 # Fungsi untuk melakukan preprocessing pada teks
 def preprocess_text(text):
     factory = StemmerFactory()
