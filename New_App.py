@@ -13,26 +13,17 @@ from gensim.models import Word2Vec
 from collections import defaultdict
 import streamlit as st
 
-# Fungsi untuk mengambil data dari GitHub
-def load_data_from_github():
-    review_url = 'https://raw.githubusercontent.com/Syawal1997/streamlit-dashboard-GCN-Word2Vec/main/20191002-reviews.xlsx'
-    human_review_url = 'https://raw.githubusercontent.com/Syawal1997/streamlit-dashboard-GCN-Word2Vec/main/human_review.xlsx'
-
-    review_df = pd.read_excel(review_url)
-    human_review_df = pd.read_excel(human_review_url)
-    
-    return review_df, human_review_df
-
-# Preprocessing function
+# Fungsi untuk melakukan preprocessing pada teks
 def preprocess_text(text):
     factory = StemmerFactory()
     stopword_factory = StopWordRemoverFactory()
     stemmer = factory.create_stemmer()
     stopword_remover = stopword_factory.create_stop_word_remover()
     
-    text = re.sub(r'(.)\1+', r'\1', text)  # Remove duplicate characters
-    text = stopword_remover.remove(text)   # Remove stopwords
-    text = text.translate(str.maketrans('', '', string.punctuation))  # Remove punctuation
+    # Menghapus karakter duplikat
+    text = re.sub(r'(.)\1+', r'\1', text)  
+    text = stopword_remover.remove(text)   # Menghapus stopwords
+    text = text.translate(str.maketrans('', '', string.punctuation))  # Menghapus tanda baca
     return text
 
 # Fungsi untuk menampilkan grafik TF-IDF
@@ -74,78 +65,75 @@ def GraphWord2Vec(text):
     
     return adj_matrix, features, graph
 
-# Fungsi untuk mengambil data dan memprosesnya
-def process_reviews():
-    review_df, human_review_df = load_data_from_github()
-
-    # Preprocessing reviews
-    review_df = review_df.loc[:, ["itemId", "reviewTitle", "reviewContent"]]
-    review_df = review_df.replace(['nan', 'null'], "").fillna("")
-    review_df = review_df.replace(r'[^\x00-\x7F]+', '', regex=True)
-    review_df = review_df.drop_duplicates()
-    review_df["review"] = review_df["reviewTitle"].astype(str) + ' ' + review_df["reviewContent"].astype(str)
-    
-    review_df["review"] = review_df["review"].apply(preprocess_text)
-    
-    # Tokenization
-    nltk.download('punkt')
-    from nltk.tokenize import word_tokenize
-    review_df["tokenized"] = review_df["review"].apply(lambda x: [word for word in word_tokenize(x) if len(word) > 1])
-    
-    # Merge with human review data
-    review_df = review_df.groupby(['itemId'])["review"].agg(lambda x: ' '.join(x)).reset_index()
-    review_df = review_df.merge(human_review_df, on='itemId')
-
-    return review_df
-
 # Fungsi untuk melakukan perhitungan TF-IDF dan cosine similarity
-def tfidf_similarity(review_df):
+def tfidf_similarity(review_df, expert_df):
     vectorizer = TfidfVectorizer()
     tfidf_matrix_reviews = vectorizer.fit_transform(review_df['review'])
     
-    df_expert = pd.read_csv('Review Expert.csv', sep=";", usecols=["review", "Summary"]).rename(columns={"Summary": "summary_expert"}).head(125)
-    df_expert['processed_review'] = df_expert['review'].apply(lambda x: x.lower())
+    expert_df['processed_review'] = expert_df['review'].apply(lambda x: x.lower())
+    tfidf_matrix_expert = vectorizer.transform(expert_df['processed_review'])
     
-    tfidf_matrix_expert = vectorizer.transform(df_expert['processed_review'])
     cosine_similarities = cosine_similarity(tfidf_matrix_expert, tfidf_matrix_reviews)
+    matched_indices = [cosine_similarities[i].argmax() for i in range(len(expert_df))]
     
-    matched_indices = [cosine_similarities[i].argmax() for i in range(len(df_expert))]
     merged_df = pd.DataFrame()
-
-    for i in range(len(df_expert)):
-        expert_row = df_expert.iloc[i]
+    for i in range(len(expert_df)):
+        expert_row = expert_df.iloc[i]
         review_row = review_df.iloc[matched_indices[i]]
         combined_row = pd.concat([expert_row, review_row])
         merged_df = pd.concat([merged_df, combined_row.to_frame().T], ignore_index=True)
     
     return merged_df
 
+# Fungsi untuk memproses review yang dimasukkan
+def process_reviews(input_review):
+    # Proses review pengguna
+    review_df = pd.DataFrame({'review': [input_review]})
+    review_df['review'] = review_df['review'].apply(preprocess_text)
+    
+    # Tokenisasi
+    nltk.download('punkt')
+    from nltk.tokenize import word_tokenize
+    review_df["tokenized"] = review_df["review"].apply(lambda x: [word for word in word_tokenize(x) if len(word) > 1])
+
+    return review_df
+
 # Streamlit App
 def main():
     st.title("Review Data Analysis")
+    st.header("Submit Your Review for Analysis")
 
-    st.header("1. Preprocessing and Data Loading")
-    review_df = process_reviews()
-    st.write(review_df.head())
+    # Input review
+    input_review = st.text_area("Enter your review:", height=150)
 
-    st.header("2. TF-IDF Similarity Analysis")
-    merged_df = tfidf_similarity(review_df)
-    st.write(merged_df.head())
-
-    st.header("3. TF-IDF Visualization")
-    if st.checkbox("Show TF-IDF Visualization"):
-        document_index = st.slider("Select Document Index", 0, len(review_df) - 1, 0)
-        plot_tfidf(review_df, document_index)
-
-    st.header("4. Word2Vec Graph")
-    if st.checkbox("Show Word2Vec Graph"):
-        selected_itemId = st.selectbox("Select ItemId", review_df['itemId'].unique())
-        selected_text = review_df.loc[review_df['itemId'] == selected_itemId, 'tokenized'].values[0]
-        adj_matrix, features, graph = GraphWord2Vec(selected_text)
+    if st.button("Submit"):
+        if input_review:
+            # Proses review yang dimasukkan
+            review_df = process_reviews(input_review)
+            st.write("Preprocessed Review:")
+            st.write(review_df['review'].iloc[0])
+            
+            # Load expert data (assuming CSV file on GitHub or local)
+            expert_df = pd.read_csv('Review Expert.csv', sep=";", usecols=["review", "Summary"]).rename(columns={"Summary": "summary_expert"}).head(125)
+            
+            # TF-IDF Similarity
+            merged_df = tfidf_similarity(review_df, expert_df)
+            st.write("Matching Expert Reviews:")
+            st.write(merged_df[['review', 'summary_expert']].head())
+            
+            # TF-IDF Visualization
+            if st.checkbox("Show TF-IDF Visualization"):
+                plot_tfidf(review_df, document_index=0)
+                
+            # Word2Vec Graph
+            if st.checkbox("Show Word2Vec Graph"):
+                selected_text = review_df['tokenized'].iloc[0]
+                adj_matrix, features, graph = GraphWord2Vec(selected_text)
+                st.write("Word2Vec Graph Visualization:")
+                nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
+                st.pyplot(plt)
+        else:
+            st.warning("Please enter a review to analyze.")
         
-        st.write("Graph visualization:")
-        nx.draw(graph, with_labels=True, font_weight='bold', font_color='brown')
-        st.pyplot(plt)
-
 if __name__ == "__main__":
     main()
