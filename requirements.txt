@@ -10,3 +10,4 @@ wordcloud
 matplotlib
 numpy
 sentence-transformers
+openpyxl
